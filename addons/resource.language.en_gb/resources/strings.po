@@ -24760,7 +24760,7 @@ msgid "{0} or {1}"
 msgstr ""
 
 #. List formatting: pattern used to join the already-combined partial list to the final item in a list of three or more items, e.g. "A, B" + "C" -> "A, B, or C"
-#. Note: the "or"-type list uses only TWO and END patterns; the START and MIDDLE joins for lists of three or more still use the AND-type comma pattern 
+#. Note: the "or"-type list uses only TWO and END patterns; the START and MIDDLE joins for lists of three or more still use the AND-type comma pattern
 #. (STR_LIST_AND_START / STR_LIST_AND_MIDDLE), with only the very last join switching to "or"
 #. STR_LIST_OR_END
 #: xbmc/utils/i18n/ListFormatter.h
@@ -25392,4 +25392,24 @@ msgstr ""
 #: system/settings/settings.xml
 msgctxt "#40804"
 msgid "{0:.1f} dB"
+msgstr ""
+
+#: xbmc/windows/GUIWindowSystemInfo.cpp
+msgctxt "#40805"
+msgid "IPv6 address"
+msgstr ""
+
+#: xbmc/windows/GUIWindowSystemInfo.cpp
+msgctxt "#40806"
+msgid "IPv6 gateway"
+msgstr ""
+
+#: xbmc/windows/GUIWindowSystemInfo.cpp
+msgctxt "#40807"
+msgid "IPv6 primary DNS"
+msgstr ""
+
+#: xbmc/windows/GUIWindowSystemInfo.cpp
+msgctxt "#40808"
+msgid "IPv6 secondary DNS"
 msgstr ""
