@@ -30,13 +30,17 @@ public:
 
   bool GetHostMacAddress(unsigned long host, std::string& mac) const override;
 
-  std::string GetCurrentIPAddress() const override;
+  std::string GetCurrentIPv4Address() const override;
   std::string GetCurrentNetmask() const override;
   std::string GetCurrentDefaultGateway() const override;
+  std::string GetCurrentIPv6Address() const override;
+  std::string GetCurrentIPv6DefaultGateway() const override;
 
   std::string GetInterfaceName() const;
 
 private:
+  std::string GetGateway(int family) const;
+
   std::string m_interfaceName;
   CNetworkIOS* m_network;
 };
@@ -57,6 +61,7 @@ public:
 
   // Get/set the nameserver(s)
   std::vector<std::string> GetNameServers() override;
+  std::vector<std::string> GetIPv6NameServers() override;
 
   friend class CNetworkInterfaceIOS;
 
