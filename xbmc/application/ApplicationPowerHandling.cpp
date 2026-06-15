@@ -224,20 +224,24 @@ bool CApplicationPowerHandling::WakeUpScreenSaver(bool bPowerOffKeyPressed /* = 
 
 void CApplicationPowerHandling::CheckOSScreenSaverInhibitionSetting()
 {
-  // Kodi screen saver overrides OS one: always inhibit OS screen saver then
-  // except when DPMS is active (inhibiting the screen saver then might also
-  // disable DPMS again)
-  if (!m_dpmsIsActive &&
-      !CServiceBroker::GetSettingsComponent()
-           ->GetSettings()
-           ->GetString(CSettings::SETTING_SCREENSAVER_MODE)
-           .empty() &&
-      CServiceBroker::GetWinSystem()->GetOSScreenSaver())
+  auto* winSystem = CServiceBroker::GetWinSystem();
+  if (!winSystem)
+    return;
+
+  const auto settings = CServiceBroker::GetSettingsComponent()->GetSettings();
+
+  const bool kodiHandlesDisplayPower = winSystem->IsDPMSSupported();
+  const bool letSystemManageDisplaySleep =
+      !kodiHandlesDisplayPower &&
+      settings->GetBool(CSettings::SETTING_POWERMANAGEMENT_ALLOWDISPLAYSLEEP);
+
+  if (!m_dpmsIsActive && !letSystemManageDisplaySleep &&
+      !settings->GetString(CSettings::SETTING_SCREENSAVER_MODE).empty() &&
+      winSystem->GetOSScreenSaver())
   {
     if (!m_globalScreensaverInhibitor)
     {
-      m_globalScreensaverInhibitor =
-          CServiceBroker::GetWinSystem()->GetOSScreenSaver()->CreateInhibitor();
+      m_globalScreensaverInhibitor = winSystem->GetOSScreenSaver()->CreateInhibitor();
     }
   }
   else if (m_globalScreensaverInhibitor)
@@ -263,12 +267,10 @@ void CApplicationPowerHandling::CheckScreenSaverAndDPMS()
   if (!winSystem)
     return;
 
-  std::shared_ptr<CDPMSSupport> dpms = winSystem->GetDPMSManager();
-
   bool maybeDPMS = true;
   if (m_dpmsIsActive)
     maybeDPMS = false;
-  else if (!dpms || !dpms->IsSupported())
+  else if (!winSystem->IsDPMSSupported())
     maybeDPMS = false;
   else if (CServiceBroker::GetSettingsComponent()->GetSettings()->GetInt(
                CSettings::SETTING_POWERMANAGEMENT_DISPLAYSOFF) <= 0)
@@ -551,7 +553,8 @@ bool CApplicationPowerHandling::OnSettingChanged(const CSetting& setting)
 {
   const std::string& settingId = setting.GetId();
 
-  if (settingId == CSettings::SETTING_SCREENSAVER_MODE)
+  if (settingId == CSettings::SETTING_SCREENSAVER_MODE ||
+      settingId == CSettings::SETTING_POWERMANAGEMENT_ALLOWDISPLAYSLEEP)
   {
     CheckOSScreenSaverInhibitionSetting();
   }
