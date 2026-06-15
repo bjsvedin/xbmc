@@ -123,6 +123,14 @@ bool SupportsScreenMove(const std::string& /*condition*/,
   return CServiceBroker::GetWinSystem()->SupportsScreenMove();
 }
 
+bool SupportsDPMS(const std::string& /*condition*/,
+                  const std::string& /*value*/,
+                  const SettingConstPtr& /*setting*/)
+{
+  const auto winSystem = CServiceBroker::GetWinSystem();
+  return winSystem && winSystem->IsDPMSSupported();
+}
+
 bool IsHDRDisplay(const std::string& /*condition*/,
                   const std::string& /*value*/,
                   const SettingConstPtr& /*setting*/)
@@ -451,6 +459,7 @@ void CSettingConditions::Initialize()
   m_complexConditions.try_emplace("haspowerofffeature", HasPowerOffFeature);
   m_complexConditions.try_emplace("hassystemsdrpeakluminance", HasSystemSdrPeakLuminance);
   m_complexConditions.try_emplace("supportsscreenmove", SupportsScreenMove);
+  m_complexConditions.try_emplace("supportsdpms", SupportsDPMS);
   m_complexConditions.try_emplace("supportsvideosuperresolution", SupportsVideoSuperResolution);
   m_complexConditions.try_emplace("supportsdolbyvision", SupportsDolbyVision);
   m_complexConditions.try_emplace("ishdrdisplay", IsHDRDisplay);

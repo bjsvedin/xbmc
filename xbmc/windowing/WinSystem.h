@@ -216,6 +216,11 @@ public:
   std::shared_ptr<CDPMSSupport> GetDPMSManager();
 
   /*!
+   * \brief Whether the windowing backend can switch the display off itself (DPMS).
+   */
+  bool IsDPMSSupported() const;
+
+  /*!
    * \brief Signal the role of the output surface: video playback or idle GUI.
    *
    * Called by video renderers at Configure (with videoPicture) and at UnInit

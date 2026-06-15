@@ -317,6 +317,11 @@ std::shared_ptr<CDPMSSupport> CWinSystemBase::GetDPMSManager()
   return m_dpms;
 }
 
+bool CWinSystemBase::IsDPMSSupported() const
+{
+  return m_dpms && m_dpms->IsSupported();
+}
+
 bool CWinSystemBase::IsHDRDisplaySettingEnabled()
 {
   if (!IsHDRDisplay())

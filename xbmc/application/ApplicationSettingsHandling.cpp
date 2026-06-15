@@ -64,6 +64,7 @@ void CApplicationSettingsHandling::RegisterSettings()
                                        CSettings::SETTING_SCREENSAVER_MODE,
                                        CSettings::SETTING_SCREENSAVER_PREVIEW,
                                        CSettings::SETTING_SCREENSAVER_SETTINGS,
+                                       CSettings::SETTING_POWERMANAGEMENT_ALLOWDISPLAYSLEEP,
                                        CSettings::SETTING_AUDIOCDS_SETTINGS,
                                        CSettings::SETTING_VIDEOSCREEN_GUICALIBRATION,
                                        CSettings::SETTING_VIDEOSCREEN_TESTPATTERN,

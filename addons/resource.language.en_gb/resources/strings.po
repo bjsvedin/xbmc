@@ -23632,7 +23632,19 @@ msgctxt "#38354"
 msgid "Unable to read xml file"
 msgstr ""
 
-#empty strings from id 38355 to 39003
+#. Label of the setting "powermanagement.allowdisplaysleep"
+#: system/settings/settings.xml
+msgctxt "#38355"
+msgid "Allow the system to put the display to sleep"
+msgstr ""
+
+#. Description of the setting "powermanagement.allowdisplaysleep" with label #38355
+#: system/settings/settings.xml
+msgctxt "#38356"
+msgid "When enabled, Kodi will not prevent the operating system from turning off the display, locking the computer, or going to sleep when idle."
+msgstr ""
+
+#empty strings from id 38357 to 39003
 
 #. Description of category "Library" with label #14202
 #: system/settings/settings.xml
