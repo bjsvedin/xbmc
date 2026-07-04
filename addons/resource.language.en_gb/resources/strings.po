@@ -14205,7 +14205,7 @@ msgstr ""
 
 #: system/settings/settings.xml
 msgctxt "#20421"
-msgid "If only one season"
+msgid "If only one season (including specials)"
 msgstr ""
 
 #. Value for setting with label #170 "Player / Videos / Adjust display refresh rate"
@@ -14508,7 +14508,13 @@ msgctxt "#20479"
 msgid "Watched Mode"
 msgstr ""
 
-#empty strings from id 20480 to 21329
+#. Value for setting with label #20412 "Flatten TV show seasons"
+#: system/settings/settings.xml
+msgctxt "#20480"
+msgid "If only one season"
+msgstr ""
+
+#empty strings from id 20481 to 21329
 #up to 21329 is reserved for the video db !! !
 
 #: system/settings/settings.xml
