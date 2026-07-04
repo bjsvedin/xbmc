@@ -1238,7 +1238,8 @@
           <constraints>
             <options>
               <option label="20420">0</option> <!-- never -->
-              <option label="20421">1</option> <!-- if only one season -->
+              <option label="20421">1</option> <!-- if only one season (including specials) -->
+              <option label="20479">3</option> <!-- if only one season -->
               <option label="20422">2</option> <!-- always -->
             </options>
           </constraints>

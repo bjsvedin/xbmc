@@ -14167,7 +14167,7 @@ msgstr ""
 
 #: system/settings/settings.xml
 msgctxt "#20421"
-msgid "If only one season"
+msgid "If only one season (including specials)"
 msgstr ""
 
 #. Value for setting with label #170 "Player / Videos / Adjust display refresh rate"
@@ -14462,7 +14462,13 @@ msgctxt "#20478"
 msgid "DV profile"
 msgstr ""
 
-#empty strings from id 20479 to 21329
+#. Value for setting with label #20412 "Flatten TV show seasons"
+#: system/settings/settings.xml
+msgctxt "#20479"
+msgid "If only one season"
+msgstr ""
+
+#empty strings from id 20480 to 21329
 #up to 21329 is reserved for the video db !! !
 
 #: system/settings/settings.xml
@@ -24524,7 +24530,7 @@ msgid "{0} or {1}"
 msgstr ""
 
 #. List formatting: pattern used to join the already-combined partial list to the final item in a list of three or more items, e.g. "A, B" + "C" -> "A, B, or C"
-#. Note: the "or"-type list uses only TWO and END patterns; the START and MIDDLE joins for lists of three or more still use the AND-type comma pattern 
+#. Note: the "or"-type list uses only TWO and END patterns; the START and MIDDLE joins for lists of three or more still use the AND-type comma pattern
 #. (STR_LIST_AND_START / STR_LIST_AND_MIDDLE), with only the very last join switching to "or"
 #. STR_LIST_OR_END
 #: xbmc/utils/i18n/ListFormatter.h

@@ -408,8 +408,8 @@ bool CGUIWindowVideoNav::GetDirectory(const std::string &strDirectory, CFileItem
         if (!items[items.Size() - 1]->HasVideoInfoTag() || items[items.Size() - 1]->GetVideoInfoTag()->m_iSeason < 0)
           itemsSize -= 1;
 
-        bool bFlatten = (itemsSize == 1 && iFlatten == 1) || iFlatten == 2 ||                              // flatten if one one season or if always flatten is enabled
-                        (itemsSize == 2 && iFlatten == 1 &&                                                // flatten if one season + specials
+        bool bFlatten = (itemsSize == 1 && (iFlatten == 1 || iFlatten == 3)) || iFlatten == 2 ||          // flatten if one season, or if always flatten is enabled
+                        (itemsSize == 2 && iFlatten == 1 &&                                                // flatten if one season + specials (only when specials are not kept separate)
                          (items[firstIndex]->GetVideoInfoTag()->m_iSeason == 0 || items[firstIndex + 1]->GetVideoInfoTag()->m_iSeason == 0));
 
         if (iFlatten > 0 && !bFlatten && (WatchedMode)CMediaSettings::GetInstance().GetWatchedMode("tvshows") == WatchedModeUnwatched)
