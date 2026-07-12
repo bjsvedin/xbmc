@@ -49,6 +49,12 @@ bool CGUIDialogKaiToast::OnMessage(CGUIMessage& message)
 
   case GUI_MSG_WINDOW_DEINIT:
     {
+      // Reset the notification text control when the dialog closes. Its "all labels shown" flag is
+      // only ever cleared while the control is being processed/rendered; if the dialog is closed
+      // while a description is still scrolling, the flag would stay false forever and permanently
+      // block DoWork() from ever showing another queued notification.
+      CGUIMessage msg(GUI_MSG_LABEL_RESET, GetID(), POPUP_NOTIFICATION_BUTTON);
+      OnMessage(msg);
     }
     break;
   }
@@ -102,10 +108,13 @@ bool CGUIDialogKaiToast::DoWork()
       CTimeUtils::GetFrameTime() - m_timer > m_toastMessageTime)
   {
     // if we have a fade label control for the text to display, ensure the whole text was shown
-    // (scrolled to the end) before we move on to the next message
+    // (scrolled to the end) before we move on to the next message. Don't wait longer than the
+    // notification's display time though: a label that never reports "all shown" (e.g. because the
+    // dialog stopped being rendered before it finished scrolling) must not freeze the whole queue.
     const CGUIFadeLabelControl* notificationText =
         dynamic_cast<const CGUIFadeLabelControl*>(GetControl(POPUP_NOTIFICATION_BUTTON));
-    if (notificationText && !notificationText->AllLabelsShown())
+    if (notificationText && !notificationText->AllLabelsShown() &&
+        CTimeUtils::GetFrameTime() - m_timer <= m_toastDisplayTime)
       return false;
 
     Notification toast = m_notifications.front();
