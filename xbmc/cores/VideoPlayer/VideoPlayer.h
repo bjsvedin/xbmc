@@ -27,6 +27,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <map>
 #include <memory>
 #include <optional>
 #include <unordered_map>
@@ -427,6 +428,27 @@ protected:
 
   bool CheckIsCurrent(const CCurrentStream& current, CDemuxStream* stream, DemuxPacket* pkg);
   void ProcessPacket(CDemuxStream* pStream, DemuxPacket* pPacket);
+
+  /*!
+   * \brief Keep-warm subtitle decoding (embedded demux subtitle streams only).
+   *
+   * When the "keep all demuxed subtitles" setting is enabled every non-selected
+   * embedded subtitle stream is decoded continuously into its own overlay
+   * container instead of having its packets dropped. Switching subtitle stream
+   * then only needs to copy the already decoded overlays into the rendered
+   * container, avoiding the backwards seek normally required to re-read the
+   * currently displayed cue.
+   */
+  bool KeepAllDemuxedSubtitlesActive() const;
+  bool IsSubtitleCacheable(const CDemuxStream* stream) const;
+  void CacheSubtitlePacket(CDemuxStream* pStream, DemuxPacket* pPacket);
+  void EnsureSubtitleCacheEntry(CDemuxStream* pStream);
+  void RemoveSubtitleCacheEntry(int64_t demuxerId, int id);
+  void PopulateOverlaysFromCache(int64_t demuxerId, int id);
+  void CleanUpSubtitleCache(double pts);
+  void FlushSubtitleCache();
+  void ClearSubtitleCache();
+
   void ProcessAudioData(CDemuxStream* pStream, DemuxPacket* pPacket);
   void ProcessVideoData(CDemuxStream* pStream, DemuxPacket* pPacket);
   void ProcessSubData(CDemuxStream* pStream, DemuxPacket* pPacket);
@@ -585,6 +607,18 @@ protected:
 
   CDVDClock m_clock;
   CDVDOverlayContainer m_overlayContainer;
+
+  //! \brief When true, keep every embedded subtitle stream decoded for instant switching.
+  bool m_keepAllDemuxedSubtitles{false};
+
+  //! \brief Per-stream keep-warm subtitle decoder + overlay container, keyed by (demuxerId, id).
+  struct SubtitleCacheEntry
+  {
+    CDVDStreamInfo hint; //!< format the decoder was opened with, to detect stream changes
+    std::unique_ptr<CDVDOverlayContainer> overlayContainer;
+    std::unique_ptr<CVideoPlayerSubtitle> subtitle;
+  };
+  std::map<std::pair<int64_t, int>, SubtitleCacheEntry> m_subtitleCache;
 
   std::shared_ptr<CDVDInputStream> m_pInputStream;
   std::unique_ptr<CDVDDemux> m_pDemuxer;

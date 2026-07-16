@@ -722,6 +722,10 @@ void CVideoPlayer::CreatePlayers()
   m_VideoPlayerTeletext = std::make_unique<CDVDTeletextData>(*m_processInfo);
   m_VideoPlayerRadioRDS = std::make_unique<CDVDRadioRDSData>(*m_processInfo);
   m_VideoPlayerAudioID3 = std::make_unique<CVideoPlayerAudioID3>(*m_processInfo);
+
+  m_keepAllDemuxedSubtitles = CServiceBroker::GetSettingsComponent()->GetSettings()->GetBool(
+      CSettings::SETTING_SUBTITLES_KEEPALLDEMUXED);
+
   m_players_created = true;
 }
 
@@ -1024,6 +1028,7 @@ bool CVideoPlayer::OpenDemuxStream()
 
 void CVideoPlayer::CloseDemuxer()
 {
+  ClearSubtitleCache();
   m_pDemuxer.reset();
   m_SelectionStreams.Clear(StreamType::NONE, STREAM_SOURCE_DEMUX);
 
@@ -1131,8 +1136,10 @@ void CVideoPlayer::OpenDefaultStreams(bool reset)
   if (!std::dynamic_pointer_cast<CDVDInputStreamNavigator>(m_pInputStream) ||
       m_playerOptions.state.empty())
   {
-    // SetEnableStream only if not visible, when visible OpenStream already implied that stream is enabled
-    if (valid && !visible)
+    // SetEnableStream only if not visible, when visible OpenStream already implied that stream is enabled.
+    // When keeping all demuxed subtitles warm the stream stays enabled and
+    // decoding while hidden, so the first show is instant with no seek.
+    if (valid && !visible && !KeepAllDemuxedSubtitlesActive())
       SetEnableStream(m_CurrentSubtitle, false);
 
     SetSubtitleVisibleInternal(visible);
@@ -1184,13 +1191,38 @@ void CVideoPlayer::OpenDefaultStreams(bool reset)
     {
       if (STREAM_SOURCE_MASK(stream.source) == STREAM_SOURCE_DEMUX)
       {
+        // Keep non-selected subtitle streams enabled when they are kept warm for
+        // instant switching, otherwise the demuxer would not feed the cache.
+        const bool keepWarmSubtitle =
+            KeepAllDemuxedSubtitlesActive() && stream.type == StreamType::SUBTITLE;
+
         if (stream.id != m_CurrentVideo.id && stream.id != m_CurrentAudio.id &&
             stream.id != m_CurrentSubtitle.id && stream.id != m_CurrentTeletext.id &&
-            stream.id != m_CurrentRadioRDS.id && stream.id != m_CurrentAudioID3.id)
+            stream.id != m_CurrentRadioRDS.id && stream.id != m_CurrentAudioID3.id &&
+            !keepWarmSubtitle)
         {
           m_pDemuxer->EnableStream(stream.demuxerId, stream.id, false);
         }
       }
+    }
+  }
+
+  // Open the warm cache decoders for non-selected embedded subtitle streams
+  // right away: switching to a stream is instant only while its cache entry
+  // exists, and waiting for the stream's first demuxed packet to create it
+  // would force a seek (and a playback blip) for any stream whose first cue
+  // has not been demuxed yet. With eager creation a missing entry reliably
+  // means the cache decoder could not be opened.
+  if (KeepAllDemuxedSubtitlesActive() && m_pDemuxer)
+  {
+    for (const auto& stream : m_SelectionStreams.Get(StreamType::SUBTITLE))
+    {
+      if (STREAM_SOURCE_MASK(stream.source) != STREAM_SOURCE_DEMUX)
+        continue;
+      if (stream.id == m_CurrentSubtitle.id && stream.demuxerId == m_CurrentSubtitle.demuxerId)
+        continue;
+      if (CDemuxStream* demuxStream = m_pDemuxer->GetStream(stream.demuxerId, stream.id))
+        EnsureSubtitleCacheEntry(demuxStream);
     }
   }
 
@@ -1238,6 +1270,10 @@ bool CVideoPlayer::ReadPacket(DemuxPacket*& packet, CDemuxStream*& stream)
     // stream changed, update and open defaults
     if (packet->iStreamId == DMX_SPECIALID_STREAMCHANGE)
     {
+      // Stream properties may have changed while stream ids are reused, so the
+      // warm subtitle decoders are stale. Entries are rebuilt lazily from the
+      // next packet of each stream.
+      ClearSubtitleCache();
       m_SelectionStreams.Clear(StreamType::NONE, STREAM_SOURCE_DEMUX);
       m_SelectionStreams.Update(m_pInputStream, m_pDemuxer.get());
       m_pDemuxer->GetPrograms(m_programs);
@@ -1634,6 +1670,11 @@ void CVideoPlayer::Process()
     // make sure we run subtitle process here
     m_VideoPlayerSubtitle->Process(m_clock.GetClock() + m_State.time_offset - m_VideoPlayerVideo->GetSubtitleDelay(), m_State.time_offset);
 
+    // prune expired overlays from the keep-warm subtitle streams
+    if (!m_subtitleCache.empty())
+      CleanUpSubtitleCache(m_clock.GetClock() + m_State.time_offset -
+                           m_VideoPlayerVideo->GetSubtitleDelay());
+
     // tell demuxer if we want to fill buffers
     if (m_demuxerSpeed != DVD_PLAYSPEED_PAUSE)
     {
@@ -1859,6 +1900,8 @@ void CVideoPlayer::ProcessPacket(CDemuxStream* pStream, DemuxPacket* pPacket)
     ProcessRadioRDSData(pStream, pPacket);
   else if (CheckIsCurrent(m_CurrentAudioID3, pStream, pPacket))
     ProcessAudioID3Data(pStream, pPacket);
+  else if (IsSubtitleCacheable(pStream))
+    CacheSubtitlePacket(pStream, pPacket); // keep non-selected subtitle streams warm
   else
   {
     CDVDDemuxUtils::FreeDemuxPacket(pPacket); // free it since we won't do anything with it
@@ -1964,6 +2007,128 @@ void CVideoPlayer::ProcessSubData(CDemuxStream* pStream, DemuxPacket* pPacket)
 
   if(m_pInputStream && m_pInputStream->IsStreamType(DVDSTREAM_TYPE_DVD))
     m_VideoPlayerSubtitle->UpdateOverlayInfo(std::static_pointer_cast<CDVDInputStreamNavigator>(m_pInputStream), LIBDVDNAV_BUTTON_NORMAL);
+}
+
+bool CVideoPlayer::KeepAllDemuxedSubtitlesActive() const
+{
+  // Client demuxers (PVR, inputstream add-ons) honor EnableStream at the
+  // backend, so keeping every subtitle stream enabled would keep all subtitle
+  // tracks streaming and decoding for the whole session. Restrict keep-warm to
+  // demuxers the player reads itself (e.g. ffmpeg), where non-selected streams
+  // are demuxed anyway and the only cost is the cache decode.
+  return m_keepAllDemuxedSubtitles && m_pInputStream && !m_pInputStream->GetIDemux();
+}
+
+bool CVideoPlayer::IsSubtitleCacheable(const CDemuxStream* stream) const
+{
+  // Only embedded demuxer subtitle streams are kept warm for now. External
+  // subtitle files are served by a separate demuxer with its own read position
+  // and are handled by the seek path.
+  return KeepAllDemuxedSubtitlesActive() && stream && stream->type == StreamType::SUBTITLE &&
+         STREAM_SOURCE_MASK(stream->source) == STREAM_SOURCE_DEMUX;
+}
+
+void CVideoPlayer::EnsureSubtitleCacheEntry(CDemuxStream* pStream)
+{
+  CDVDStreamInfo hint;
+  hint.Assign(*pStream, true);
+
+  const std::pair<int64_t, int> key{pStream->demuxerId, pStream->uniqueId};
+  const auto entryIt = m_subtitleCache.find(key);
+  if (entryIt != m_subtitleCache.end())
+  {
+    // The stream format can change while the demuxer keeps the same stream id
+    // (e.g. PMT updates in transport streams). Rebuild the decoder in that
+    // case, mirroring what CheckStreamChanges() does for the rendered streams.
+    if (entryIt->second.hint == hint)
+      return;
+    m_subtitleCache.erase(entryIt);
+  }
+
+  auto container = std::make_unique<CDVDOverlayContainer>();
+  auto subtitle = std::make_unique<CVideoPlayerSubtitle>(container.get(), *m_processInfo);
+
+  // Opening a subtitle decoder overwrites the subtitle codec info reported to
+  // the OSD via CProcessInfo. A cache decoder is not the rendered stream, so
+  // preserve the value that belongs to the currently selected stream.
+  const std::string decoderName = m_processInfo->GetSubtitleDecoderName();
+  const bool opened = subtitle->OpenStream(hint);
+  m_processInfo->SetSubtitleDecoderName(decoderName);
+
+  if (!opened)
+  {
+    CLog::Log(LOGDEBUG,
+              "CVideoPlayer::EnsureSubtitleCacheEntry - unable to open cache decoder for "
+              "subtitle stream {}",
+              pStream->uniqueId);
+    return;
+  }
+
+  CLog::Log(LOGDEBUG, "CVideoPlayer::EnsureSubtitleCacheEntry - keeping subtitle stream {} warm",
+            pStream->uniqueId);
+  m_subtitleCache[key] = {hint, std::move(container), std::move(subtitle)};
+}
+
+void CVideoPlayer::CacheSubtitlePacket(CDemuxStream* pStream, DemuxPacket* pPacket)
+{
+  EnsureSubtitleCacheEntry(pStream);
+
+  const auto it = m_subtitleCache.find({pStream->demuxerId, pStream->uniqueId});
+  if (it == m_subtitleCache.end())
+  {
+    CDVDDemuxUtils::FreeDemuxPacket(pPacket);
+    return;
+  }
+
+  // The subtitle player takes ownership of the packet through the message.
+  it->second.subtitle->SendMessage(std::make_shared<CDVDMsgDemuxerPacket>(pPacket, false));
+}
+
+void CVideoPlayer::RemoveSubtitleCacheEntry(int64_t demuxerId, int id)
+{
+  m_subtitleCache.erase({demuxerId, id});
+}
+
+void CVideoPlayer::PopulateOverlaysFromCache(int64_t demuxerId, int id)
+{
+  const auto it = m_subtitleCache.find({demuxerId, id});
+  if (it == m_subtitleCache.end())
+    return;
+
+  // Copy the overlays already decoded for the newly selected stream into the
+  // rendered container. Overlays are reference counted, so this is a cheap
+  // pointer copy and gives us the currently displayed cue with no seek.
+  std::unique_lock renderedLock(m_overlayContainer);
+  std::unique_lock cacheLock(*it->second.overlayContainer);
+
+  VecOverlays* overlays = it->second.overlayContainer->GetOverlays();
+  if (overlays)
+  {
+    for (const auto& overlay : *overlays)
+      m_overlayContainer.ProcessAndAddOverlayIfValid(overlay);
+  }
+}
+
+void CVideoPlayer::CleanUpSubtitleCache(double pts)
+{
+  if (pts == DVD_NOPTS_VALUE)
+    return;
+
+  // Drop overlays that have already expired so the warm cache stays bounded to
+  // roughly the demuxer read-ahead window rather than growing for the whole file.
+  for (auto& [key, entry] : m_subtitleCache)
+    entry.overlayContainer->CleanUp(pts);
+}
+
+void CVideoPlayer::FlushSubtitleCache()
+{
+  for (auto& [key, entry] : m_subtitleCache)
+    entry.subtitle->Flush();
+}
+
+void CVideoPlayer::ClearSubtitleCache()
+{
+  m_subtitleCache.clear();
 }
 
 void CVideoPlayer::ProcessTeletextData(CDemuxStream* pStream, DemuxPacket* pPacket)
@@ -2867,6 +3032,7 @@ void CVideoPlayer::OnExit()
 
   // destroy objects
   m_renderManager.Flush(false, false);
+  ClearSubtitleCache();
   m_pDemuxer.reset();
   m_pSubtitleDemuxer.reset();
   m_subtitleDemuxerMap.clear();
@@ -2939,6 +3105,7 @@ void CVideoPlayer::HandleMessages()
 
       FlushBuffers(DVD_NOPTS_VALUE, true, true);
       m_renderManager.Flush(false, false);
+      ClearSubtitleCache();
       m_pDemuxer.reset();
       m_pSubtitleDemuxer.reset();
       m_subtitleDemuxerMap.clear();
@@ -3212,16 +3379,86 @@ void CVideoPlayer::HandleMessages()
             CloseStream(m_CurrentSubtitle, false);
           }
         }
+        else if (KeepAllDemuxedSubtitlesActive() && st.id == m_CurrentSubtitle.id &&
+                 st.demuxerId == m_CurrentSubtitle.demuxerId &&
+                 st.source == m_CurrentSubtitle.source && m_CurrentSubtitle.id >= 0)
+        {
+          // The requested stream is already the active one. This happens when
+          // toggling subtitles off (which pairs SetSubtitleVisible(false) with a
+          // SetSubtitle() of the current index). Re-opening and seeking here just
+          // produces a visible blip, so leave the already warm stream untouched.
+        }
         else
         {
+          // Remember the previously selected embedded stream so it can be kept
+          // warm for an instant switch back.
+          const int64_t prevDemuxerId = m_CurrentSubtitle.demuxerId;
+          const int prevId = m_CurrentSubtitle.id;
+          const int prevSource = m_CurrentSubtitle.source;
+          const bool prevWasEmbedded =
+              m_CurrentSubtitle.id >= 0 && STREAM_SOURCE_MASK(prevSource) == STREAM_SOURCE_DEMUX;
+
+          // Switch instantly when the target embedded stream is warm cached: its
+          // current cue is copied from the cache below, so no seek is needed.
+          // An empty cache container is fine - the demuxer runs ahead of
+          // playback, so a cue active at the current time would already have
+          // been demuxed and decoded into the cache. Cache entries are created
+          // eagerly in OpenDefaultStreams(), so a missing entry means the cache
+          // decoder could not be opened and the current cue cannot be recovered
+          // from the cache - only then fall back to the seek path.
+          const bool instantSwitch =
+              KeepAllDemuxedSubtitlesActive() &&
+              STREAM_SOURCE_MASK(st.source) == STREAM_SOURCE_DEMUX &&
+              m_subtitleCache.find({st.demuxerId, st.id}) != m_subtitleCache.end();
+
+          // Snapshot the overlays currently on screen so that switching back to
+          // the previous stream (whose cue may have started before this switch)
+          // is also instant. CloseStream() clears the rendered container.
+          VecOverlays prevOverlays;
+          if (instantSwitch && prevWasEmbedded)
+          {
+            std::unique_lock lock(m_overlayContainer);
+            if (VecOverlays* current = m_overlayContainer.GetOverlays())
+              prevOverlays = *current;
+          }
+
           CloseStream(m_CurrentSubtitle, false);
           OpenStream(m_CurrentSubtitle, st.demuxerId, st.id, st.source);
 
+          if (instantSwitch)
+          {
+            // The newly selected stream has been decoded continuously into the
+            // keep-warm cache, so the currently displayed cue is already
+            // available. Copy it into the rendered container instead of seeking.
+            PopulateOverlaysFromCache(st.demuxerId, st.id);
+
+            // This stream is now the rendered stream; stop caching it and start
+            // keeping the previous one warm instead.
+            RemoveSubtitleCacheEntry(st.demuxerId, st.id);
+            if (prevWasEmbedded)
+            {
+              if (CDemuxStream* prevStream = m_pDemuxer ? m_pDemuxer->GetStream(prevDemuxerId, prevId)
+                                                        : nullptr)
+              {
+                // CloseStream() disabled the previous stream in the demuxer;
+                // re-enable it so it keeps feeding the warm cache (a no-op for
+                // demuxers without stream selection, e.g. ffmpeg).
+                m_pDemuxer->EnableStream(prevDemuxerId, prevId, true);
+                EnsureSubtitleCacheEntry(prevStream);
+                const auto it = m_subtitleCache.find({prevDemuxerId, prevId});
+                if (it != m_subtitleCache.end())
+                {
+                  for (const auto& overlay : prevOverlays)
+                    it->second.overlayContainer->ProcessAndAddOverlayIfValid(overlay);
+                }
+              }
+            }
+          }
           // For embedded subtitles the demuxer is ahead of playback (AV buffers
           // are full), so the subtitle packets for the current playback time have
           // already been read and discarded. Seek back to the current time so they
           // get re-read, mirroring what audio stream switching does.
-          if (STREAM_SOURCE_MASK(st.source) == STREAM_SOURCE_DEMUX)
+          else if (STREAM_SOURCE_MASK(st.source) == STREAM_SOURCE_DEMUX)
           {
             CDVDMsgPlayerSeek::CMode mode;
             mode.time = static_cast<double>(GetUpdatedTime());
@@ -3248,8 +3485,10 @@ void CVideoPlayer::HandleMessages()
         SetSubtitle(GetSubtitle());
       }
 
-      // SetEnableStream only if not visible, when visible OpenStream already implied that stream is enabled
-      if (!isVisible)
+      // SetEnableStream only if not visible, when visible OpenStream already implied that stream is enabled.
+      // When keeping all demuxed subtitles warm we leave the stream enabled and
+      // decoding while hidden, so re-enabling it is instant with no seek.
+      if (!isVisible && !KeepAllDemuxedSubtitlesActive())
         SetEnableStream(m_CurrentSubtitle, false);
 
       SetSubtitleVisibleInternal(isVisible);
@@ -3257,7 +3496,11 @@ void CVideoPlayer::HandleMessages()
       // Image type subtitles (e.g. VOBSUB) can support "forced" flag on overlays (images)
       // so you need to keep the stream open to parse "forced" flag on each image
       // since we leave the stream open by default, it is necessary to close it
-      // if the language does not match the preferences.
+      // if the language does not match the preferences. This applies also when
+      // keeping all demuxed subtitles warm: forced overlays render even while
+      // subtitles are hidden, so the wrong-language stream must not stay open.
+      // Once closed the stream keeps decoding into the warm cache instead, so
+      // re-showing it is still instant.
       if (!isVisible && StreamUtils::IsCodecSupportForcedOverlay(ss.codecId) &&
           !g_LangCodeExpander.CompareISO639Codes(ss.language, as.language))
       {
@@ -4328,8 +4571,10 @@ void CVideoPlayer::AdaptForcedSubtitles()
         }
       }
     }
-    // SetEnableStream only if not visible, when visible OpenStream already implied that stream is enabled
-    if (!isVisible)
+    // SetEnableStream only if not visible, when visible OpenStream already implied that stream is enabled.
+    // When keeping all demuxed subtitles warm the stream stays enabled and
+    // decoding while hidden, so the first show is instant with no seek.
+    if (!isVisible && !KeepAllDemuxedSubtitlesActive())
       SetEnableStream(m_CurrentSubtitle, false);
 
     SetSubtitleVisibleInternal(isVisible);
@@ -4481,6 +4726,7 @@ void CVideoPlayer::FlushBuffers(double pts, bool accurate, bool sync)
   m_VideoPlayerTeletext->Flush();
   m_VideoPlayerRadioRDS->Flush();
   m_VideoPlayerAudioID3->Flush();
+  FlushSubtitleCache();
 
   if (m_playSpeed == DVD_PLAYSPEED_NORMAL || m_playSpeed == DVD_PLAYSPEED_PAUSE ||
       m_processInfo->IsTempoAllowed(static_cast<float>(m_playSpeed) / DVD_PLAYSPEED_NORMAL))
