@@ -120,7 +120,7 @@ void CGUIWindowSystemInfo::FrameMove()
     SET_CONTROL_LABEL(40, CServiceBroker::GetResourcesComponent().GetLocalizeStrings().Get(20154));
     SetControlLabel(i++, "{}: {}", 158, SYSTEM_FREE_MEMORY);
     SetControlLabel(i++, "{}: {}", 150, NETWORK_IP_ADDRESS);
-    SetControlLabel(i++, "{}: {}", 40803, NETWORK_IPV6_ADDRESS);
+    SetControlLabel(i++, "{}: {}", 40805, NETWORK_IPV6_ADDRESS);
     SetControlLabel(i++, "{} {}", 13287, SYSTEM_SCREEN_RESOLUTION);
     SetControlLabel(i++, "{} {}", 13283, SYSTEM_OS_VERSION_INFO);
     SetControlLabel(i++, "{}: {}", 12390, SYSTEM_UPTIME);
@@ -152,10 +152,10 @@ void CGUIWindowSystemInfo::FrameMove()
     SetControlLabel(i++, "{}: {}", 13160, NETWORK_GATEWAY_ADDRESS);
     SetControlLabel(i++, "{}: {}", 13161, NETWORK_DNS1_ADDRESS);
     SetControlLabel(i++, "{}: {}", 20307, NETWORK_DNS2_ADDRESS);
-    SetControlLabel(i++, "{}: {}", 40803, NETWORK_IPV6_ADDRESS);
-    SetControlLabel(i++, "{}: {}", 40804, NETWORK_IPV6_GATEWAY_ADDRESS);
-    SetControlLabel(i++, "{}: {}", 40805, NETWORK_IPV6_DNS1_ADDRESS);
-    SetControlLabel(i++, "{}: {}", 40806, NETWORK_IPV6_DNS2_ADDRESS);
+    SetControlLabel(i++, "{}: {}", 40805, NETWORK_IPV6_ADDRESS);
+    SetControlLabel(i++, "{}: {}", 40806, NETWORK_IPV6_GATEWAY_ADDRESS);
+    SetControlLabel(i++, "{}: {}", 40807, NETWORK_IPV6_DNS1_ADDRESS);
+    SetControlLabel(i++, "{}: {}", 40808, NETWORK_IPV6_DNS2_ADDRESS);
   }
 
   else if (m_section == CONTROL_BT_VIDEO)
