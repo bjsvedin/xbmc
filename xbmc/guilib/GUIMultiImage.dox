@@ -28,6 +28,7 @@ timing information.
       <pauseatend>10000</pauseatend>
       <randomize>true</randomize>
       <loop>no</loop>
+      <recursive>true</recursive>
       <aspectratio>stretch</aspectratio>
 </control>
 ~~~~~~~~~~~~~
@@ -65,7 +66,10 @@ important, as `xml` tags are case-sensitive.
 | fadetime      | Time in milliseconds to fade between images.
 | pauseatend    | Time in milliseconds to pause (in addition to <b>`<timeperimage>`</b>) on the last image at the end of a complete cycle through the images. Only useful if <b>`<loop>`</b> is set to yes.
 | loop          | If set to no, the last image will display indefinitely. Setting it to yes will loop around once they reach the last image. Defaults to yes.
+| recursive     | If set to true, images in subfolders of <b>`<imagepath>`</b> are included as well. Defaults to false.
 | aspectratio   | This specifies how the image will be drawn inside the box defined by <b>`<width>`</b> and <b>`<height>`</b>. [See here for more info](http://kodi.wiki/view/Aspect_Ratio).
+
+@skinning_v22 <b>recursive</b> New tag added.
 
 --------------------------------------------------------------------------------
 \section MultiImage_Control_sect4 See also
