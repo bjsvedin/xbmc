@@ -25,6 +25,7 @@
 #include "music/MusicInfoLoader.h"
 #include "music/MusicThumbLoader.h"
 #include "music/tags/MusicInfoTag.h"
+#include "music/tags/MusicInfoTagLoaderFactory.h"
 #include "network/NetworkFileItemClassify.h"
 #include "playlists/PlayList.h"
 #include "resources/LocalizeStrings.h"
@@ -38,6 +39,26 @@ using namespace KODI;
 using namespace KODI::GUILIB;
 using namespace KODI::GUILIB::GUIINFO;
 using namespace MUSIC_INFO;
+
+namespace
+{
+// Songs in the music library get their tag from the database, which holds no lyrics, and
+// CMusicInfoLoader::LoadAdditionalTagInfo no longer reads the file for them.
+void LoadLyricsFromFile(CFileItem& item)
+{
+  CMusicInfoTag* tag = item.GetMusicInfoTag();
+  const std::string path{tag->GetURL().empty() ? item.GetPath() : tag->GetURL()};
+  const CFileItem tagItem{path, false};
+  const std::unique_ptr<IMusicInfoTagLoader> loader{
+      CMusicInfoTagLoaderFactory::CreateLoader(tagItem)};
+  if (!loader)
+    return;
+
+  CMusicInfoTag fileTag;
+  if (loader->Load(path, fileTag))
+    tag->SetLyrics(fileTag.GetLyrics());
+}
+} // unnamed namespace
 
 bool CMusicGUIInfo::InitCurrentItem(CFileItem* item)
 {
@@ -76,6 +97,10 @@ bool CMusicGUIInfo::InitCurrentItem(CFileItem* item)
     }
 
     CMusicInfoLoader::LoadAdditionalTagInfo(item);
+
+    if (tag->GetLyrics().empty() && !NETWORK::IsInternetStream(*item))
+      LoadLyricsFromFile(*item);
+
     return true;
   }
   return false;

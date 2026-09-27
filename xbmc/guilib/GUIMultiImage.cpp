@@ -28,9 +28,21 @@
 using namespace KODI::GUILIB;
 using namespace XFILE;
 
-CGUIMultiImage::CGUIMultiImage(int parentID, int controlID, float posX, float posY, float width, float height, const CTextureInfo& texture, unsigned int timePerImage, unsigned int fadeTime, bool randomized, bool loop, unsigned int timeToPauseAtEnd)
-    : CGUIControl(parentID, controlID, posX, posY, width, height),
-      m_image(0, 0, posX, posY, width, height, texture)
+CGUIMultiImage::CGUIMultiImage(int parentID,
+                               int controlID,
+                               float posX,
+                               float posY,
+                               float width,
+                               float height,
+                               const CTextureInfo& texture,
+                               unsigned int timePerImage,
+                               unsigned int fadeTime,
+                               bool randomized,
+                               bool loop,
+                               unsigned int timeToPauseAtEnd,
+                               bool recursive)
+  : CGUIControl(parentID, controlID, posX, posY, width, height),
+    m_image(0, 0, posX, posY, width, height, texture)
 {
   m_currentImage = 0;
   m_timePerImage = timePerImage + fadeTime;
@@ -38,6 +50,7 @@ CGUIMultiImage::CGUIMultiImage(int parentID, int controlID, float posX, float po
   m_image.SetCrossFade(fadeTime);
   m_randomized = randomized;
   m_loop = loop;
+  m_recursive = recursive;
   ControlType = GUICONTROL_MULTI_IMAGE;
   m_bDynamicResourceAlloc=false;
   m_directoryStatus = UNLOADED;
@@ -51,6 +64,7 @@ CGUIMultiImage::CGUIMultiImage(const CGUIMultiImage &from)
   m_timeToPauseAtEnd = from.m_timeToPauseAtEnd;
   m_randomized = from.m_randomized;
   m_loop = from.m_loop;
+  m_recursive = from.m_recursive;
   m_bDynamicResourceAlloc=false;
   m_directoryStatus = UNLOADED;
   if (m_texturePath.IsConstant())
@@ -244,8 +258,8 @@ void CGUIMultiImage::LoadDirectory()
   // slow(er) checks necessary - do them in the background
   std::unique_lock lock(m_section);
   m_directoryStatus = LOADING;
-  m_jobID = CServiceBroker::GetJobManager()->AddJob(new CMultiImageJob(m_currentPath), this,
-                                                    CJob::PRIORITY_NORMAL);
+  m_jobID = CServiceBroker::GetJobManager()->AddJob(new CMultiImageJob(m_currentPath, m_recursive),
+                                                    this, CJob::PRIORITY_NORMAL);
 }
 
 void CGUIMultiImage::OnDirectoryLoaded()
@@ -298,8 +312,9 @@ std::string CGUIMultiImage::GetDescription() const
   return m_image.GetDescription();
 }
 
-CGUIMultiImage::CMultiImageJob::CMultiImageJob(const std::string &path)
-  : m_path(path)
+CGUIMultiImage::CMultiImageJob::CMultiImageJob(const std::string& path, bool recursive)
+  : m_path(path),
+    m_recursive(recursive)
 {
 }
 
@@ -320,15 +335,35 @@ bool CGUIMultiImage::CMultiImageJob::DoWork()
     if (realPath.empty())
       return true;
 
-    URIUtils::AddSlashAtEnd(realPath);
-    CFileItemList items;
-    CDirectory::GetDirectory(realPath, items, CServiceBroker::GetFileExtensionProvider().GetPictureExtensions()+ "|.tbn|.dds", DIR_FLAG_NO_FILE_DIRS | DIR_FLAG_NO_FILE_INFO);
-    for (int i=0; i < items.Size(); i++)
-    {
-      CFileItem* pItem = items[i].get();
-      if (pItem && (pItem->IsPicture() || StringUtils::StartsWithNoCase(pItem->GetMimeType(), "image/")))
-        m_files.push_back(pItem->GetPath());
-    }
+    AddImagesFromFolder(realPath);
   }
   return true;
+}
+
+void CGUIMultiImage::CMultiImageJob::AddImagesFromFolder(const std::string& path)
+{
+  // the control cancels the job when its path changes, which matters for long recursive listings
+  if (ShouldCancel(0, 0))
+    return;
+
+  std::string folder = path;
+  URIUtils::AddSlashAtEnd(folder);
+  CFileItemList items;
+  CDirectory::GetDirectory(folder, items,
+                           CServiceBroker::GetFileExtensionProvider().GetPictureExtensions() +
+                               "|.tbn|.dds",
+                           DIR_FLAG_NO_FILE_DIRS | DIR_FLAG_NO_FILE_INFO);
+  for (int i = 0; i < items.Size(); i++)
+  {
+    CFileItem* pItem = items[i].get();
+    if (!pItem)
+      continue;
+    if (pItem->IsFolder())
+    {
+      if (m_recursive)
+        AddImagesFromFolder(pItem->GetPath());
+    }
+    else if (pItem->IsPicture() || StringUtils::StartsWithNoCase(pItem->GetMimeType(), "image/"))
+      m_files.push_back(pItem->GetPath());
+  }
 }
