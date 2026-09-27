@@ -902,6 +902,7 @@ CGUIControl* CGUIControlFactory::Create(int parentID,
   unsigned int timeToPauseAtEnd = 0;
   bool randomized = false;
   bool loop = true;
+  bool recursive = false;
   bool wrapMultiLine = false;
   ORIENTATION orientation = VERTICAL;
   bool showOnePage = true;
@@ -1185,6 +1186,7 @@ CGUIControl* CGUIControlFactory::Create(int parentID,
   XMLUtils::GetUInt(pControlNode, "pauseatend", timeToPauseAtEnd);
   XMLUtils::GetBoolean(pControlNode, "randomize", randomized);
   XMLUtils::GetBoolean(pControlNode, "loop", loop);
+  XMLUtils::GetBoolean(pControlNode, "recursive", recursive);
   XMLUtils::GetBoolean(pControlNode, "scrollout", scrollOut);
 
   XMLUtils::GetFloat(pControlNode, "radiowidth", radioWidth);
@@ -1558,7 +1560,7 @@ CGUIControl* CGUIControlFactory::Create(int parentID,
     case CGUIControl::GUICONTROL_MULTI_IMAGE:
     {
       control = new CGUIMultiImage(parentID, id, posX, posY, width, height, texture, timePerImage,
-                                   fadeTime, randomized, loop, timeToPauseAtEnd);
+                                   fadeTime, randomized, loop, timeToPauseAtEnd, recursive);
       static_cast<CGUIMultiImage*>(control)->SetInfo(texturePath);
       static_cast<CGUIMultiImage*>(control)->SetAspectRatio(aspect);
 

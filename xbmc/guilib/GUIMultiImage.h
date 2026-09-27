@@ -28,7 +28,19 @@
 class CGUIMultiImage : public CGUIControl, public IJobCallback
 {
 public:
-  CGUIMultiImage(int parentID, int controlID, float posX, float posY, float width, float height, const CTextureInfo& texture, unsigned int timePerImage, unsigned int fadeTime, bool randomized, bool loop, unsigned int timeToPauseAtEnd);
+  CGUIMultiImage(int parentID,
+                 int controlID,
+                 float posX,
+                 float posY,
+                 float width,
+                 float height,
+                 const CTextureInfo& texture,
+                 unsigned int timePerImage,
+                 unsigned int fadeTime,
+                 bool randomized,
+                 bool loop,
+                 unsigned int timeToPauseAtEnd,
+                 bool recursive);
   CGUIMultiImage(const CGUIMultiImage &from);
   ~CGUIMultiImage(void) override;
   CGUIMultiImage* Clone() const override { return new CGUIMultiImage(*this); }
@@ -62,12 +74,17 @@ protected:
   class CMultiImageJob : public CJob
   {
   public:
-    explicit CMultiImageJob(const std::string &path);
+    CMultiImageJob(const std::string& path, bool recursive);
     bool DoWork() override;
     const char* GetType() const override { return "multiimage"; }
 
     std::vector<std::string> m_files;
     std::string              m_path;
+
+  private:
+    void AddImagesFromFolder(const std::string& path);
+
+    bool m_recursive;
   };
 
   KODI::GUILIB::GUIINFO::CGUIInfoLabel m_texturePath;
@@ -78,6 +95,7 @@ protected:
   unsigned int m_timeToPauseAtEnd;
   bool m_randomized;
   bool m_loop;
+  bool m_recursive;
 
   bool m_bDynamicResourceAlloc;
   std::vector<std::string> m_files;
